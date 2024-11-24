@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flipper Zero Asset Pack Maker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>F0 Asset Pack Maker</h1>
+            <p>easily create asset packs for your Flipper Zero</p>
+        </header>
+
+        <div class="workspace">
+            <aside class="sidebar">
+                <div class="pack-info">
+                    <h2>Pack Settings</h2>
+                    <div class="input-group">
+                        <label for="packName">Pack Name</label>
+                        <input type="text" id="packName" placeholder="Enter pack name (max 32 chars)" maxlength="32">
+                    </div>
+                    <div class="input-group">
+                        <label>Pack Type</label>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="includeAnims" checked>
+                            <label for="includeAnims">Animations</label>
+                            <input type="checkbox" id="includeIcons" checked>
+                            <label for="includeIcons">Icons</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="file-upload">
+                    <h2>Upload Files</h2>
+                    <button class="button" id="uploadAnimsBtn">Upload Animations</button>
+                    <button class="button" id="uploadIconsBtn">Upload Icons</button>
+                    <div id="uploadStatus"></div>
+                </div>
+
+                <div class="export-section">
+                    <h2>Export</h2>
+                    <button class="button orange" id="exportPackBtn">Export Asset Pack</button>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="animations">Animations</button>
+                    <button class="tab-btn" data-tab="icons">Icons</button>
+                </div>
+
+                <div class="tab-content" id="animationsTab">
+                    <div class="animation-list" id="animationList">
+                        <!-- Animation previews will be added here -->
+                    </div>
+                </div>
+
+                <div class="tab-content hidden" id="iconsTab">
+                    <div class="icon-list" id="iconList">
+                        <!-- Icon previews will be added here -->
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Templates -->
+    <template id="animationItemTemplate">
+        <div class="animation-item">
+            <div class="animation-header">
+                <input type="text" class="animation-name" placeholder="Animation name">
+                <div class="preview-controls">
+                    <label class="mono-toggle">
+                        <input type="checkbox" class="preview-mono">
+                        <span>Show Monochrome</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="preview-container">
+                <div class="size-info">
+                    <span class="size-required">Required: 128x64 pixels</span>
+                    <span class="current-size"></span>
+                </div>
+                <img src="" alt="Animation Preview">
+                
+                <div class="playback-controls">
+                    <div class="frame-controls">
+                        <button class="prev-frame" title="Previous Frame">◀</button>
+                        <button class="play-pause" title="Play/Pause">▶</button>
+                        <button class="next-frame" title="Next Frame">▶</button>
+                    </div>
+                    <span class="frame-counter">1/1</span>
+                </div>
+            </div>
+
+            <div class="animation-settings">
+                <h3>Animation Settings</h3>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="frameRate">Frame Rate (FPS)</label>
+                        <input type="number" class="frame-rate" min="1" max="60" value="30">
+                    </div>
+                    <div class="setting-item">
+                        <label for="minLevel">Min Level</label>
+                        <input type="number" class="min-level" min="1" max="30" value="1">
+                    </div>
+                    <div class="setting-item">
+                        <label for="maxLevel">Max Level</label>
+                        <input type="number" class="max-level" min="1" max="30" value="30">
+                    </div>
+                    <div class="setting-item">
+                        <label for="weight">Weight</label>
+                        <input type="number" class="weight" min="1" max="100" value="1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="frame-management">
+                <h3>Frame Management</h3>
+                <div class="frame-controls-group">
+                    <button class="add-frames button">Add Frames</button>
+                    <button class="reorder-frames button">Reorder</button>
+                    <button class="delete-frame button">Delete Frame</button>
+                </div>
+                <div class="frame-list">
+                    <!-- Frame thumbnails will be added here -->
+                </div>
+            </div>
+
+            <button class="button remove-btn danger">Remove Animation</button>
+        </div>
+    </template>
+
+    <template id="iconItemTemplate">
+        <div class="icon-item" data-name="">
+            <div class="preview-container">
+                <img src="" alt="Icon Preview">
+                <div class="icon-size-info">
+                    <span class="current">Current: <span class="current-size">0x0</span></span>
+                    <span class="recommended">Recommended: <span class="recommended-size">128x64</span></span>
+                </div>
+            </div>
+            
+            <div class="icon-controls">
+                <div class="control-group">
+                    <label for="icon-category">Category</label>
+                    <select class="icon-category">
+                        <option value="Animations">Animations</option>
+                        <option value="Passport">Passport</option>
+                        <option value="RFID">RFID</option>
+                        <option value="SubGhz">SubGhz</option>
+                        <option value="iButton">iButton</option>
+                    </select>
+                </div>
+                
+                <div class="size-controls">
+                    <label>Size:</label>
+                    <input type="number" class="width-input" placeholder="Width">
+                    <span>x</span>
+                    <input type="number" class="height-input" placeholder="Height">
+                    <button class="resize-btn button small">Resize</button>
+                </div>
+                
+                <div class="preview-controls">
+                    <label class="mono-toggle">
+                        <input type="checkbox" class="preview-mono">
+                        <span>Show Monochrome</span>
+                    </label>
+                </div>
+                
+                <button class="button small remove-btn">Remove</button>
+            </div>
+        </div>
+    </template>
+
+    <template id="resizeModalTemplate">
+        <div class="modal-overlay">
+            <div class="modal resize-modal">
+                <h3>Incorrect Image Size</h3>
+                <p>Images must be 128x64 pixels. Would you like to resize?</p>
+                <div class="resize-preview">
+                    <div class="original">
+                        <h4>Original (${width}x${height})</h4>
+                        <img src="" alt="Original" class="original-img">
+                    </div>
+                    <div class="preview">
+                        <h4>Preview (128x64)</h4>
+                        <img src="" alt="Preview" class="preview-img">
+                    </div>
+                </div>
+                <div class="modal-buttons">
+                    <button class="button resize-confirm">Resize</button>
+                    <button class="button cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="utils.js"></script>
+    <script src="app.js"></script>
+
+    <footer class="footer">
+        <p>made by <a href="https://github.com/jaylikesbunda" target="_blank">jay candel</a> with ❤️</p>
+    </footer>
+</body>
+</html>
+
+
+
