@@ -291,16 +291,12 @@ Weight: ${anim.weight || 3}`;
         // First ensure we have a valid image to work with
         let imgElement;
         if (image instanceof Blob) {
-            // If we got a blob, create an image from it
             imgElement = await createImageBitmap(image);
         } else if (image instanceof ImageBitmap) {
-            // If we already have an ImageBitmap, use it directly
             imgElement = image;
         } else if (image.blob) {
-            // If we have our custom image object with blob property
             imgElement = await createImageBitmap(image.blob);
         } else if (image.originalBlob) {
-            // If we have our custom image object with originalBlob property
             imgElement = await createImageBitmap(image.originalBlob);
         } else {
             throw new Error('Invalid image format provided');
@@ -315,20 +311,24 @@ Weight: ${anim.weight || 3}`;
         ctx.drawImage(imgElement, 0, 0);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
-        // Convert to 1-bit monochrome (inverted like Python's ImageOps.invert())
-        const buffer = new Uint8Array(Math.ceil(imgElement.width * imgElement.height / 8));
-        let bufferIndex = 0, bitIndex = 0;
+        // Calculate buffer size and create buffer
+        const width = imgElement.width;
+        const height = imgElement.height;
+        const rowSize = Math.ceil(width / 8);
+        const bufferSize = rowSize * height;
+        const buffer = new Uint8Array(bufferSize);
         
-        for (let i = 0; i < imageData.data.length; i += 4) {
-            const brightness = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
-            if (brightness > 127) {  // Inverted compared to previous implementation
-                buffer[bufferIndex] |= (1 << (7 - bitIndex));
-            }
-            
-            bitIndex++;
-            if (bitIndex === 8) {
-                bitIndex = 0;
-                bufferIndex++;
+        // Convert to 1-bit monochrome (matching Python's ImageOps.invert())
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const i = (y * width + x) * 4;
+                const brightness = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+                
+                if (brightness > 127) {  // Inverted like Python implementation
+                    const byteIndex = y * rowSize + Math.floor(x / 8);
+                    const bitIndex = 7 - (x % 8);  // MSB first, like XBM format
+                    buffer[byteIndex] |= (1 << bitIndex);
+                }
             }
         }
         
@@ -338,6 +338,7 @@ Weight: ${anim.weight || 3}`;
         }
         
         // Return uncompressed format (0x00 + data)
+        // This matches Python's raw format
         return new Uint8Array([0x00, ...buffer]);
     }
 
@@ -350,19 +351,20 @@ Weight: ${anim.weight || 3}`;
             throw new Error('Invalid image dimensions');
         }
 
-        // Create header with dimensions (little-endian)
+        // Create header with dimensions (little-endian, matching Python struct.pack)
         const header = new ArrayBuffer(8);
         const view = new DataView(header);
-        view.setUint32(0, width, true);   // Little endian
-        view.setUint32(4, height, true);  // Little endian
+        view.setInt32(0, width, true);   // Little endian
+        view.setInt32(4, height, true);  // Little endian
         
         // Get bitmap data
         const bitmapData = await this.convertToXBM(image);
         
-        // Combine header and bitmap data
+        // Combine header and bitmap data (matching Python's format)
         const result = new Uint8Array(header.byteLength + bitmapData.byteLength);
         result.set(new Uint8Array(header), 0);
         result.set(bitmapData, header.byteLength);
+        
         return result;
     }
 
