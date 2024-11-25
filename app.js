@@ -319,6 +319,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Sanitize remaining name
             const sanitizedName = noFrameName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
             
+            // Don't add category prefix if name already starts with it
+            if (sanitizedName.startsWith(category.toLowerCase() + '_')) {
+                return sanitizedName;
+            }
+            
             // Add category-specific prefixes
             switch(category) {
                 case 'Passport':
@@ -335,6 +340,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         addAnimationToUI(name, previewUrl, frameCount) {
+            const list = document.getElementById('animationList');
+            const emptyState = list.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
             const template = document.getElementById('animationItemTemplate');
             const clone = template.content.cloneNode(true);
             const container = clone.querySelector('.animation-item');
@@ -692,6 +702,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async addIconToUI(name, previewUrl) {
+            const list = document.getElementById('iconList');
+            const emptyState = list.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
             const template = document.getElementById('iconItemTemplate');
             const clone = template.content.cloneNode(true);
             const container = clone.querySelector('.icon-item');
@@ -738,8 +753,28 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Set up category selection
             if (categorySelect) {
+                const nameSelect = container.querySelector('.icon-name');
+                
+                const updateNameOptions = (category) => {
+                    nameSelect.innerHTML = '';
+                    const names = ICON_NAMES[category] || [];
+                    names.forEach(name => {
+                        const option = document.createElement('option');
+                        option.value = name;
+                        option.textContent = name;
+                        nameSelect.appendChild(option);
+                    });
+                    
+                    // If no predefined names, enable manual input
+                    if (names.length === 0) {
+                        nameSelect.innerHTML = '<option value="">Custom Name</option>';
+                    }
+                };
+
                 categorySelect.addEventListener('change', (e) => {
                     const selectedCategory = e.target.value;
+                    updateNameOptions(selectedCategory);
+                    
                     const recommended = this.imageProcessor.recommendedSizes[selectedCategory];
                     
                     if (recommended) {
@@ -756,35 +791,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.imageProcessor.updateIconCategory(name, selectedCategory);
                 });
                 
-                // Trigger initial category selection to set recommended size
-                categorySelect.dispatchEvent(new Event('change'));
+                // Add a separate name change listener
+                nameSelect.addEventListener('change', (e) => {
+                    const selectedName = e.target.value;
+                    if (selectedName) {
+                        // Don't add category prefix if name already has it
+                        const newName = selectedName.includes('_') ? selectedName : `${categorySelect.value.toLowerCase()}_${selectedName}`;
+                        const oldName = container.dataset.name;
+                        
+                        // Update the container's data attribute
+                        container.dataset.name = newName;
+                        
+                        // Update the name in the image processor
+                        this.imageProcessor.updateIconName(oldName, newName);
+                    }
+                });
+                
+                // Initial population of names
+                updateNameOptions(categorySelect.value);
             }
             
             // Set up resize functionality
             if (resizeBtn && widthInput && heightInput) {
-                const updatePreview = async () => {
-                    const width = parseInt(widthInput.value);
-                    const height = parseInt(heightInput.value);
-                    if (width > 0 && height > 0) {
-                        try {
-                            container.classList.add('loading');
-                            const showMonochrome = monoToggle.checked;
-                            const newPreviewUrl = await this.imageProcessor.resizeIcon(name, width, height, showMonochrome);
-                            if (newPreviewUrl) {
-                                preview.src = newPreviewUrl;
-                            }
-                            this.updateStatus('Icon resized successfully');
-                        } catch (error) {
-                            this.updateStatus('Error resizing icon: ' + error.message, true);
-                        } finally {
-                            container.classList.remove('loading');
-                        }
-                    }
-                };
-    
-                widthInput.addEventListener('input', updatePreview);
-                heightInput.addEventListener('input', updatePreview);
-    
                 resizeBtn.addEventListener('click', async () => {
                     const width = parseInt(widthInput.value);
                     const height = parseInt(heightInput.value);
@@ -792,9 +820,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         try {
                             container.classList.add('loading');
                             const showMonochrome = monoToggle.checked;
-                            const newPreviewUrl = await this.imageProcessor.resizeIcon(name, width, height, showMonochrome);
+                            const currentName = container.dataset.name; // Get current name from container
+                            const newPreviewUrl = await this.imageProcessor.resizeIcon(currentName, width, height, showMonochrome);
                             if (newPreviewUrl) {
                                 preview.src = newPreviewUrl;
+                                // Update the name with new dimensions
+                                const baseName = currentName.replace(/_\d+x\d+$/, '');
+                                const newName = `${baseName}_${width}x${height}`;
+                                container.dataset.name = newName;
+                                this.imageProcessor.updateIconName(currentName, newName);
+                                currentSizeSpan.textContent = `${width}x${height}`;
                             }
                             this.updateStatus('Icon resized successfully');
                         } catch (error) {
@@ -812,11 +847,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         container.classList.add('loading');
                         const showMonochrome = e.target.checked;
-                        const icon = this.imageProcessor.icons.get(name);
+                        const currentName = container.dataset.name; // Get current name from container
+                        const icon = this.imageProcessor.icons.get(currentName);
                         if (!icon) throw new Error('Icon not found');
                         
                         if (showMonochrome) {
-                            // Store current color version if not already stored
                             if (!preview.dataset.colorSrc) {
                                 preview.dataset.colorSrc = preview.src;
                             }
@@ -825,7 +860,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             await new Promise(resolve => img.onload = resolve);
                             preview.src = await Utils.previewMonochrome(img);
                         } else {
-                            // Restore the color version
                             preview.src = preview.dataset.colorSrc;
                         }
                     } catch (error) {
@@ -852,6 +886,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = container.dataset.name;
             this.imageProcessor.removeAnimation(name);
             container.remove();
+            
+            // Show empty state if no animations left
+            const list = document.getElementById('animationList');
+            if (list.children.length <= 1) { // Account for empty-state div
+                const emptyState = list.querySelector('.empty-state');
+                if (emptyState) {
+                    emptyState.style.display = 'flex';
+                }
+            }
             this.updateStatus('Animation removed');
         },
 
@@ -859,6 +902,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = container.dataset.name;
             this.imageProcessor.removeIcon(name);
             container.remove();
+            
+            // Show empty state if no icons left
+            const list = document.getElementById('iconList');
+            if (list.children.length <= 1) { // Account for empty-state div
+                const emptyState = list.querySelector('.empty-state');
+                if (emptyState) {
+                    emptyState.style.display = 'flex';
+                }
+            }
             this.updateStatus('Icon removed');
         },
 
@@ -966,3 +1018,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the app
     app.init();
 });
+
+const ICON_NAMES = {
+    Passport: [
+        'passport',
+        'passport_bad',
+        'passport_happy',
+        'passport_okay'
+    ],
+    RFID: [
+        'RFIDDolphinReceive',
+        'RFIDDolphinSend',
+        'RFIDSmallChip'
+    ],
+    SubGhz: [
+        'Cos',
+        'Dynamic',
+        'Fishing',
+        'Lock',
+        'MHz',
+        'Quest',
+        'Raw',
+        'Sats',
+        'Scanning',
+        'Static',
+        'Unlock',
+        'Weather'
+    ],
+    iButton: [
+        'iButtonDolphinVerySuccess',
+        'iButtonKey'
+    ]
+};

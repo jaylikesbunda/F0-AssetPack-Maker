@@ -113,7 +113,7 @@ Weight: ${anim.weight || 3}`;
                         continue;
                     }
                     
-                    const iconName = `${category.toLowerCase()}_default_${icon.image.width}x${icon.image.height}`;
+                    const iconName = name.includes('x') ? name : `${name}_${icon.image.width}x${icon.image.height}`;
                     categoryFolder.file(`${iconName}.bmx`, bmxData);
                 }
             }
@@ -611,7 +611,7 @@ class ImageProcessor {
 
         this.animations.set(name, {
             frames,
-            frameRate: 30,
+            frameRate: 5,
             minLevel: 1,
             maxLevel: 30,
             weight: 1,
@@ -638,10 +638,8 @@ class ImageProcessor {
                 false
             );
             
-            // Store with proper category prefix
-            const categoryPrefix = category.toLowerCase();
-            const cleanName = name.replace(/^[a-z]+_/, ''); // Remove any existing category prefix
-            const finalName = `${categoryPrefix}_${cleanName}`;
+            // Don't modify the name here - use the one provided
+            const finalName = name;  // Remove the category prefix logic
 
             this.icons.set(finalName, {
                 image: {
@@ -796,6 +794,14 @@ class ImageProcessor {
         const icon = this.icons.get(name);
         if (icon) {
             icon.category = category;
+        }
+    }
+
+    updateIconName(oldName, newName) {
+        const icon = this.icons.get(oldName);
+        if (icon) {
+            this.icons.set(newName, icon);
+            this.icons.delete(oldName);
         }
     }
 }
