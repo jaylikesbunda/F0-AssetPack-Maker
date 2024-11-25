@@ -264,30 +264,74 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!file) return;
 
             try {
-                // Load the image first to get dimensions
-                const img = new Image();
-                await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                    img.src = URL.createObjectURL(file);
-                });
+                // Get the currently selected category from the active tab
+                const categorySelect = document.querySelector('#iconsTab .icon-category');
+                let category = categorySelect ? categorySelect.value : 'Animations';
                 
-                const name = this.generateUniqueName(file.name);
-                const previewUrl = await this.imageProcessor.addIcon(name, file, img.width, img.height);
+                // Generate name with category context
+                const name = this.generateUniqueName(file.name, category);
                 
-                // Clean up the blob URL
-                URL.revokeObjectURL(img.src);
+                const recommendedSize = this.imageProcessor.recommendedSizes[category];
                 
-                await this.addIconToUI(name, previewUrl);
+                // Pass the selected category to addIcon
+                const previewUrl = await this.imageProcessor.addIcon(
+                    name,
+                    file,
+                    category
+                );
+                
+                // Add to UI
+                const container = await this.addIconToUI(name, previewUrl);
+                
+                // Set the initial category in the UI
+                const newCategorySelect = container.querySelector('.icon-category');
+                if (newCategorySelect) {
+                    newCategorySelect.value = category;
+                    
+                    // Add change listener for category updates
+                    newCategorySelect.addEventListener('change', (e) => {
+                        const newCategory = e.target.value;
+                        this.imageProcessor.updateIconCategory(name, newCategory);
+                        
+                        // Update recommended size display
+                        const recommendedSizeSpan = container.querySelector('.recommended-size');
+                        if (recommendedSizeSpan) {
+                            const newSize = this.imageProcessor.recommendedSizes[newCategory];
+                            recommendedSizeSpan.textContent = `${newSize.width}x${newSize.height}`;
+                        }
+                    });
+                }
+                
+                document.getElementById('iconList').appendChild(container);
                 this.updateStatus('Added icon successfully');
             } catch (error) {
                 this.updateStatus('Error adding icon: ' + error.message, true);
             }
         },
 
-        generateUniqueName(originalName) {
-            const baseName = originalName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
-            return `${baseName}_${Date.now()}`;
+        generateUniqueName(originalName, category) {
+            // Remove extension and clean up name
+            const baseName = originalName.replace(/\.[^/.]+$/, '');
+            // Remove any existing dimensions from name (like _128x64)
+            const cleanName = baseName.replace(/_\d+x\d+$/, '');
+            // Remove any frame numbers
+            const noFrameName = cleanName.replace(/frame_\d+/i, '');
+            // Sanitize remaining name
+            const sanitizedName = noFrameName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+            
+            // Add category-specific prefixes
+            switch(category) {
+                case 'Passport':
+                    return `passport_${sanitizedName}`;
+                case 'SubGhz':
+                    return `subghz_${sanitizedName}`;
+                case 'RFID':
+                    return `rfid_${sanitizedName}`;
+                case 'iButton':
+                    return `ibutton_${sanitizedName}`;
+                default:
+                    return `${category.toLowerCase()}_${sanitizedName}`;
+            }
         },
 
         addAnimationToUI(name, previewUrl, frameCount) {
@@ -707,6 +751,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         widthInput.value = 128;
                         heightInput.value = 64;
                     }
+                    
+                    // Store category with icon data
+                    this.imageProcessor.updateIconCategory(name, selectedCategory);
                 });
                 
                 // Trigger initial category selection to set recommended size
@@ -789,7 +836,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             }
-    
+
             // Set up remove button
             const removeBtn = container.querySelector('.remove-btn');
             if (removeBtn) {
@@ -797,9 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.removeIcon(container);
                 });
             }
-    
-            // Add to document
-            document.getElementById('iconList').appendChild(clone);
+
             return container;
         },
 

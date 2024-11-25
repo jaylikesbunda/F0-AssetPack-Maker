@@ -56,52 +56,68 @@ class Utils {
     }
 
     static async createZipFile(packName, assets) {
-        // Add JSZip to the HTML file
         const zip = new JSZip();
-        const root = zip.folder(packName);
+        const packFolder = zip.folder(packName);
         
+        // Handle animations
         if (assets.animations.length > 0) {
-            const animsFolder = root.folder('Anims');
+            const animsFolder = packFolder.folder('Anims');
+            
+            // Create manifest.txt first
+            let manifest = '';
+            for (const [name, anim] of assets.animations) {
+                manifest += `Name: ${name}\n`;
+            }
+            animsFolder.file('manifest.txt', manifest);
+            
+            // Process each animation
             for (const [name, anim] of assets.animations) {
                 const animFolder = animsFolder.folder(name);
                 
-                // Add frames
-                for (let i = 0; i < anim.frames.length; i++) {
-                    const frame = anim.frames[i];
-                    const frameData = await this.convertToMonochrome(frame);
-                    animFolder.file(`frame_${i}.bm`, frameData);
-                }
-                
-                // Add meta.txt
-                const meta = `Width: ${anim.meta.width}
-Height: ${anim.meta.height}
+                // Create meta.txt with EXACT format matching Python
+                const meta = `Width: ${anim.frames[0].width}
+Height: ${anim.frames[0].height}
 Frames: ${anim.frames.length}
-Duration: ${1000 / anim.frameRate * anim.frames.length}`;
-                animFolder.file('meta.txt', meta);
-            }
-            
-            // Add manifest.txt
-            const manifest = assets.animations.map(([name, anim]) => 
-                `Name: ${name}
+Duration: ${anim.frameRate || 30}
 Min butthurt: 0
-Max butthurt: 13
-Min level: ${anim.minLevel}
-Max level: ${anim.maxLevel}
-Weight: ${anim.weight}`
-            ).join('\n\n');
-            animsFolder.file('manifest.txt', manifest);
-        }
-        
-        if (assets.icons.length > 0) {
-            const iconsFolder = root.folder('Icons');
-            for (const [name, icon] of assets.icons) {
-                const categoryFolder = iconsFolder.folder(icon.category);
-                const iconData = await this.convertToMonochrome(icon.image);
-                categoryFolder.file(`${name}.bmx`, this.createBMXFile(icon));
+Max butthurt: 14
+Min level: ${anim.minLevel || 1}
+Max level: ${anim.maxLevel || 30}
+Weight: ${anim.weight || 3}`;
+                animFolder.file('meta.txt', meta.replace(/\r\n/g, '\n'));  // Ensure LF line endings
+                
+                // Add frames with correct naming
+                for (let i = 0; i < anim.frames.length; i++) {
+                    const frameData = await this.convertToXBM(anim.frames[i]);
+                    animFolder.file(`frame_${i.toString().padStart(2, '0')}.bm`, frameData);
+                }
             }
         }
         
-        return await zip.generateAsync({type: 'blob'});
+        // Handle icons
+        if (assets.icons.length > 0) {
+            const iconsFolder = packFolder.folder('Icons');
+            
+            for (const [name, icon] of assets.icons) {
+                const category = icon.category || 'Default';
+                const categoryFolder = iconsFolder.folder(category);
+                
+                if (!Array.isArray(icon.frames)) {
+                    // Static icon (.bmx format)
+                    const bmxData = await this.convertToBMX(icon.image);
+                    
+                    // Use category_default naming scheme for all categories
+                    const iconName = `${category.toLowerCase()}_default`;
+                    categoryFolder.file(`${iconName}.bmx`, bmxData);
+                }
+            }
+        }
+        
+        return await zip.generateAsync({
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 6 }
+        });
     }
 
     static async convertToMonochrome(image) {
@@ -270,6 +286,145 @@ Weight: ${anim.weight}`
             }
         });
     }
+
+    static async convertToXBM(image) {
+        // First ensure we have a valid image to work with
+        let imgElement;
+        if (image instanceof Blob) {
+            // If we got a blob, create an image from it
+            imgElement = await createImageBitmap(image);
+        } else if (image instanceof ImageBitmap) {
+            // If we already have an ImageBitmap, use it directly
+            imgElement = image;
+        } else if (image.blob) {
+            // If we have our custom image object with blob property
+            imgElement = await createImageBitmap(image.blob);
+        } else if (image.originalBlob) {
+            // If we have our custom image object with originalBlob property
+            imgElement = await createImageBitmap(image.originalBlob);
+        } else {
+            throw new Error('Invalid image format provided');
+        }
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = imgElement.width;
+        canvas.height = imgElement.height;
+        
+        // Draw and get image data
+        ctx.drawImage(imgElement, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Convert to 1-bit monochrome (inverted like Python's ImageOps.invert())
+        const buffer = new Uint8Array(Math.ceil(imgElement.width * imgElement.height / 8));
+        let bufferIndex = 0, bitIndex = 0;
+        
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            const brightness = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+            if (brightness > 127) {  // Inverted compared to previous implementation
+                buffer[bufferIndex] |= (1 << (7 - bitIndex));
+            }
+            
+            bitIndex++;
+            if (bitIndex === 8) {
+                bitIndex = 0;
+                bufferIndex++;
+            }
+        }
+        
+        // Clean up
+        if (imgElement instanceof ImageBitmap) {
+            imgElement.close();
+        }
+        
+        // Return uncompressed format (0x00 + data)
+        return new Uint8Array([0x00, ...buffer]);
+    }
+
+    static async convertToBMX(image) {
+        // First ensure we have valid dimensions
+        const width = image.width || image.image?.width;
+        const height = image.height || image.image?.height;
+        
+        if (!width || !height) {
+            throw new Error('Invalid image dimensions');
+        }
+
+        // Create header with dimensions (little-endian)
+        const header = new ArrayBuffer(8);
+        const view = new DataView(header);
+        view.setUint32(0, width, true);   // Little endian
+        view.setUint32(4, height, true);  // Little endian
+        
+        // Get bitmap data
+        const bitmapData = await this.convertToXBM(image);
+        
+        // Combine header and bitmap data
+        const result = new Uint8Array(header.byteLength + bitmapData.byteLength);
+        result.set(new Uint8Array(header), 0);
+        result.set(bitmapData, header.byteLength);
+        return result;
+    }
+
+    static async createAnimatedIconMeta(width, height, frameRate, frameCount) {
+        const buffer = new ArrayBuffer(16);  // 4 int32s
+        const view = new DataView(buffer);
+        view.setInt32(0, width, true);      // Little endian
+        view.setInt32(4, height, true);     // Little endian
+        view.setInt32(8, frameRate, true);  // Little endian
+        view.setInt32(12, frameCount, true); // Little endian
+        return new Uint8Array(buffer);
+    }
+
+    static ICON_CATEGORIES = {
+        Passport: {
+            width: 46,
+            height: 49,
+            required: true
+        },
+        RFID: {
+            width: 97,
+            height: 61,
+            required: true
+        },
+        Animations: {
+            width: 128,
+            height: 64,
+            required: true
+        },
+        // Add other categories as needed
+        Default: {
+            width: 128,
+            height: 64,
+            required: false
+        }
+    };
+
+    static validateIconSize(category, width, height) {
+        const spec = this.ICON_CATEGORIES[category] || this.ICON_CATEGORIES.Default;
+        if (!spec.required) return true;
+        return width === spec.width && height === spec.height;
+    }
+
+    static generateIconName(originalName, category) {
+        // Remove extension and clean up name
+        const baseName = originalName.replace(/\.[^/.]+$/, '');
+        const cleanName = baseName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        
+        // Add category-specific prefixes
+        switch(category) {
+            case 'Passport':
+                return `passport_${cleanName}`;
+            case 'SubGhz':
+                return `subghz_${cleanName}`;
+            case 'RFID':
+                return `rfid_${cleanName}`;
+            case 'iButton':
+                return `ibutton_${cleanName}`;
+            default:
+                return cleanName;
+        }
+    }
 }
 
 // imageProcessor.js
@@ -307,26 +462,42 @@ class ImageProcessor {
         return frames[0].dataUrl;
     }
 
-    async addIcon(name, file, width, height) {
+    async addIcon(name, file, category = 'Animations') {
+        if (!file) return;
+
         try {
-            // Store original file for future resizing
-            const originalProcessed = await Utils.resizeImageWithCanvas(file, width, height);
+            const recommendedSize = this.recommendedSizes[category];
             
-            this.icons.set(name, {
+            // Process the image first
+            const processed = await Utils.resizeImageWithCanvas(
+                file, 
+                recommendedSize.width, 
+                recommendedSize.height,
+                false,
+                false
+            );
+            
+            // Store with proper category prefix
+            const categoryPrefix = category.toLowerCase();
+            const cleanName = name.replace(/^[a-z]+_/, ''); // Remove any existing category prefix
+            const finalName = `${categoryPrefix}_${cleanName}`;
+
+            this.icons.set(finalName, {
                 image: {
-                    blob: originalProcessed.blob,
-                    width: originalProcessed.width,
-                    height: originalProcessed.height,
-                    originalWidth: originalProcessed.originalWidth,
-                    originalHeight: originalProcessed.originalHeight,
-                    dataUrl: originalProcessed.dataUrl,
-                    originalBlob: file, // Store the original file
-                    originalDataUrl: originalProcessed.dataUrl // Store the original processed dataUrl
+                    blob: processed.blob,
+                    width: processed.width,
+                    height: processed.height,
+                    originalWidth: processed.originalWidth,
+                    originalHeight: processed.originalHeight,
+                    dataUrl: processed.dataUrl,
+                    originalBlob: file,
+                    originalDataUrl: processed.dataUrl
                 },
-                meta: this.createIconMeta(width, height)
+                category: category,
+                meta: this.createIconMeta(processed.width, processed.height)
             });
             
-            return originalProcessed.dataUrl;
+            return processed.dataUrl;
         } catch (error) {
             console.error('Error adding icon:', error);
             throw error;
@@ -415,6 +586,7 @@ class ImageProcessor {
             );
             
             this.icons.set(name, {
+                ...icon,  // Preserve ALL icon data including category
                 image: {
                     ...icon.image, // Preserve original data
                     blob: processed.blob,
@@ -457,5 +629,12 @@ class ImageProcessor {
 
         const frame = animation.frames.splice(fromIndex, 1)[0];
         animation.frames.splice(toIndex, 0, frame);
+    }
+
+    updateIconCategory(name, category) {
+        const icon = this.icons.get(name);
+        if (icon) {
+            icon.category = category;
+        }
     }
 }
