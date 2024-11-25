@@ -53,25 +53,63 @@ body {
     padding: 1.5rem;
     background-color: var(--bg-secondary);
     border-radius: 0;
-    border: none;
     position: relative;
-    @extend .pixel-border;
+    
+    /* Add subtle gradient background */
+    background: linear-gradient(
+        to bottom,
+        var(--bg-secondary),
+        var(--bg-primary)
+    );
+    
+    /* Add pixel border */
+    border: 2px solid var(--accent-purple);
     box-shadow: 
-        0 4px 0 rgba(0,0,0,0.2),
-        0 0 0 4px var(--accent-purple);
+        0 4px 0 rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .header h1 {
     color: var(--accent-orange);
     margin-bottom: var(--spacing-sm);
-    text-shadow: 
-        3px 3px 0 var(--bg-primary),
-        -3px -3px 0 var(--bg-primary),
-        3px -3px 0 var(--bg-primary),
-        -3px 3px 0 var(--bg-primary);
-    letter-spacing: 2px;
     font-size: var(--font-size-xl);
-}
+    position: relative;
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: transform 0.15s ease;
+    
+    /* Subtle text shadow */
+    text-shadow: 
+        1px 1px 0 var(--bg-primary),
+        -1px 1px 0 var(--bg-primary),
+        1px -1px 0 var(--bg-primary),
+        -1px -1px 0 var(--bg-primary);
+    
+    /* Pixel border effect */
+    &::before {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        background: var(--accent-purple);
+        z-index: -1;
+        clip-path: polygon(
+            0 2px, 2px 2px, 2px 0,
+            calc(100% - 2px) 0, calc(100% - 2px) 2px, 100% 2px,
+            100% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 100%,
+            2px 100%, 2px calc(100% - 2px), 0 calc(100% - 2px)
+        );
+        transition: background-color 0.15s ease;
+    }
+    
+
+        
+        &::before {
+            background: var(--accent-orange);
+        }
+    }
+
 
 .header p {
     font-size: var(--font-size-xs);
