@@ -980,16 +980,31 @@ input:focus {
 }
 
 .font-preview {
-    background: var(--bg-primary);
-    padding: var(--spacing-md);
-    border-radius: 4px;
-    min-height: 60px;
+    position: relative;
+    width: 500px;  /* Increased width for larger previews */
+    height: 200px; /* Increased height for better visibility */
+    background: #000;
+    border: 2px solid var(--accent-orange);
+    image-rendering: pixelated;
+    overflow: hidden; /* Prevents overflow if canvas is larger */
+}
+
+canvas {
+    display: block; /* Removes unwanted gaps below canvas */
 }
 
 .preview-text {
     display: block;
-    word-wrap: break-word;
-    color: var(--text-primary);
+    width: 100%;
+    min-height: 32px;
+    background-position: left center;
+    background-repeat: no-repeat;
+    background-size: contain;
+}
+
+.font-size {
+    min-width: 120px;
+    margin-right: var(--spacing-sm);
 }
 
 /* Add styles for the font instructions */
@@ -1030,4 +1045,38 @@ input:focus {
     padding: var(--spacing-sm);
     background: var(--bg-secondary);
     border-radius: 4px;
+}
+
+.font-preview canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    -ms-interpolation-mode: nearest-neighbor;
+    transform: translateZ(0);  /* Force GPU acceleration */
+    backface-visibility: hidden;  /* Prevent blurry text during animations */
+}
+
+/* Add beta tag styling */
+.beta-tag {
+    background: var(--accent-purple);
+    color: white;
+    font-size: 0.6em;
+    padding: 2px 4px;
+    border-radius: 3px;
+    margin-left: 4px;
+    vertical-align: top;
+    display: inline-block;
+    font-family: 'Press Start 2P', cursive;
+}
+
+/* Adjust font instructions to mention beta status */
+.font-instructions {
+    /* ... existing styles ... */
+}
+
+.font-instructions::before {
+    content: "🧪 BETA FEATURE";
+    display: block;
+    color: var(--accent-purple);
+    margin-bottom: var(--spacing-md);
+    font-weight: bold;
 }

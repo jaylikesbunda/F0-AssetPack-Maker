@@ -82,13 +82,15 @@
                             <span class="emoji">🔤</span>
                             <h3>No fonts yet!</h3>
                             <div class="font-instructions">
+                                <p>This feature is currently in beta. Some functionality may be limited or experimental.</p>
+                                
                                 <h4>Supported Font Formats:</h4>
                                 <ul>
-                                    <li>U8g2 Binary Font (.u8f)</li>
-                                    <li>U8g2 C Source (.c)</li>
-                                    <li>BDF (.bdf) - Coming Soon</li>
-                                    <li>PCF (.pcf) - Coming Soon</li>
-                                    <li>TrueType (.ttf) - Coming Soon</li>
+                                    <li>U8g2 Binary Font (.u8f) <span class="beta-tag">READY</span></li>
+                                    <li>U8g2 C Source (.c) <span class="beta-tag">READY</span></li>
+                                    <li>BDF (.bdf) <span class="beta-tag">SOON</span></li>
+                                    <li>PCF (.pcf) <span class="beta-tag">SOON</span></li>
+                                    <li>TrueType (.ttf) <span class="beta-tag">SOON</span></li>
                                 </ul>
                                 
                                 <h4>How to Get U8g2 Fonts:</h4>
@@ -276,6 +278,8 @@
     </template>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <script src="utils.js" type="module"></script>
     <script src="fontProcessor.js" type="module"></script>
     <script src="app.js" type="module"></script>

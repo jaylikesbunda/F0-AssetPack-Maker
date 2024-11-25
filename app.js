@@ -3,14 +3,37 @@ import { FontProcessor } from './fontProcessor.js';
 import { ImageProcessor } from './imageProcessor.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if required libraries are loaded
+    if (typeof opentype === 'undefined') {
+        console.error('opentype.js library not loaded');
+        document.getElementById('uploadStatus').innerHTML = 
+            'Error: Required font libraries not loaded. Please refresh the page.';
+        return;
+    }
+
+    if (typeof JSZip === 'undefined') {
+        console.error('JSZip library not loaded');
+        document.getElementById('uploadStatus').innerHTML = 
+            'Error: Required ZIP library not loaded. Please refresh the page.';
+        return;
+    }
+
     const app = {
         fontProcessor: new FontProcessor(),
         imageProcessor: new ImageProcessor(),
         
         init() {
+            // Get template references
+            this.fontItemTemplate = document.getElementById('fontItemTemplate');
+            if (!this.fontItemTemplate) {
+                console.error('Font item template not found in HTML');
+                return;
+            }
+
             this.bindEvents();
             this.setupTabs();
             this.validatePackName();
+            this.setupBetaTags();
         },
 
         bindEvents() {
@@ -1025,8 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleFontUpload() {
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = '.c,.u8f';
-            
+            input.accept = '.c,.u8f,.bdf,.pcf,.ttf';
             input.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -1040,12 +1062,194 @@ document.addEventListener('DOMContentLoaded', () => {
         async addFont(file) {
             try {
                 const name = this.generateUniqueName(file.name, 'Fonts');
+                console.log('Adding font:', { name, file });
                 const previewUrl = await this.fontProcessor.addFont(name, file);
+                console.log('Font added, preview URL:', previewUrl);
                 const container = await this.addFontToUI(name, previewUrl);
                 document.getElementById('fontList').appendChild(container);
                 this.updateStatus('Added font successfully');
             } catch (error) {
+                console.error('Error in addFont:', error);
                 this.updateStatus('Error adding font: ' + error.message, true);
+            }
+        },
+
+        async updateFontPreview(fontItem, font) {
+            console.log('Starting font preview update:', { 
+                fontName: fontItem.dataset.name,
+                fontDataSize: font.data.length 
+            });
+            
+            try {
+                const previewContainer = fontItem.querySelector('.font-preview');
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Parse font data
+                console.log('Parsing U8G2 font data...');
+                const parsedFont = await this.fontProcessor.parseU8G2Font(font.data);
+                console.log('Font parsed successfully:', {
+                    boundingBox: parsedFont.properties.boundingBox,
+                    charCount: parsedFont.chars.size
+                });
+                
+                // Calculate dimensions for preview text
+                const text = 'The quick brown fox';
+                const scale = 2;  // Fixed scale for better visibility
+                console.log('Preview settings:', { text, scale });
+                
+                let totalWidth = 0;
+                let maxHeight = (parsedFont.properties.ascent + parsedFont.properties.descent) * scale;
+                
+                // Calculate required width based on each glyph's width and scaling
+                for (const char of text) {
+                    const glyph = parsedFont.chars.get(char.charCodeAt(0));
+                    if (glyph) {
+                        totalWidth += (glyph.bbox.width * scale) + scale;
+                    }
+                }
+                
+                console.log('Calculated preview dimensions:', {
+                    totalWidth,
+                    ascent: parsedFont.properties.ascent,
+                    descent: parsedFont.properties.descent,
+                    canvasWidth: totalWidth + 20, // 10px padding on each side
+                    canvasHeight: maxHeight + 30 // Increased padding to 15px on top and bottom
+                });
+                
+                // Set canvas dimensions with increased padding
+                canvas.width = totalWidth + 30; // 10px padding on each side
+                canvas.height = maxHeight + 120; // 15px padding top and bottom
+                
+                // Set black background
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Set white text color
+                ctx.fillStyle = '#FFFFFF';
+                
+                // Initialize text drawing position with increased padding
+                let xPos = 10;  // Start with 10px left padding
+                const yPos = 15 + (parsedFont.properties.ascent * scale);  // Start with 15px top padding + ascent
+                
+                for (const char of text) {
+                    const glyph = parsedFont.chars.get(char.charCodeAt(0));
+                    if (!glyph) continue;
+                    
+                    this.drawGlyphBitmap(ctx, glyph, xPos, yPos, scale);
+                    xPos += (glyph.bbox.width * scale) + scale; // Move to next glyph's position
+                }
+                
+                // Clear container and add canvas
+                previewContainer.innerHTML = '';
+                previewContainer.appendChild(canvas);
+                
+                console.log('Preview generation complete');
+            } catch (error) {
+                console.error('Preview generation error:', error);
+                throw error;
+            }
+        },
+
+        drawGlyphBitmap(ctx, glyph, x, y, scale) {
+            // Ensure x and y are on pixel boundaries
+            const baseX = Math.round(x);
+            const baseY = Math.round(y);
+            const pixelSize = Math.round(scale);  // Ensure consistent pixel size
+
+            let pixelsDrawn = 0;
+            for (let py = 0; py < glyph.bbox.height; py++) {
+                for (let px = 0; px < glyph.bbox.width; px++) {
+                    const byteIndex = Math.floor(py * Math.ceil(glyph.bbox.width / 8) + px / 8);
+                    const bitIndex = 7 - (px % 8);
+                
+                    const byte = Number(glyph.bitmap[byteIndex]);
+                    if (byte & (1 << bitIndex)) {
+                        pixelsDrawn++;
+                        ctx.fillRect(
+                            baseX + (px * pixelSize),
+                            baseY + (py * pixelSize),
+                            pixelSize,
+                            pixelSize
+                        );
+                    }
+                }
+            }
+        },
+
+        handleFontSizeChange(event) {
+            const fontItem = event.target.closest('.font-item');
+            const fontName = fontItem.dataset.name;
+            const font = this.fontProcessor.fonts.get(fontName);
+            
+            // Debounce the preview update
+            if (this.fontSizeUpdateTimeout) {
+                clearTimeout(this.fontSizeUpdateTimeout);
+            }
+            
+            this.fontSizeUpdateTimeout = setTimeout(() => {
+                if (font) {
+                    this.updateFontPreview(fontItem, font);
+                }
+            }, 100);
+        },
+
+        async addFontToUI(name, previewUrl) {
+            const list = document.getElementById('fontList');
+            const emptyState = list.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+            const template = document.getElementById('fontItemTemplate');
+            const container = template.content.cloneNode(true).querySelector('.font-item');
+            container.dataset.name = name;
+            
+            // Set the font name in the input
+            const nameInput = container.querySelector('.font-name');
+            nameInput.value = name;
+            
+            // Set up remove button
+            const removeBtn = container.querySelector('.remove-btn');
+            removeBtn.addEventListener('click', () => {
+                this.fontProcessor.removeFont(name);
+                container.remove();
+                
+                // Show empty state if no fonts left
+                if (list.children.length === 0) {
+                    emptyState.style.display = 'flex';
+                }
+            });
+            
+            // Set up font size change handler
+            const sizeSelect = container.querySelector('.font-size');
+            sizeSelect.addEventListener('change', (e) => this.handleFontSizeChange(e));
+
+            try {
+                const font = this.fontProcessor.fonts.get(name);
+                if (font) {
+                    await this.updateFontPreview(container, font);
+                }
+            } catch (error) {
+                console.error('Preview error:', error);
+                const previewContainer = container.querySelector('.font-preview');
+                previewContainer.textContent = 'Preview unavailable';
+            }
+
+            return container;
+        },
+
+        setupBetaTags() {
+            // Add beta tags to font-related elements
+            const fontCheckbox = document.getElementById('includeFonts');
+            const fontUploadBtn = document.getElementById('uploadFontsBtn');
+            
+            if (fontCheckbox) {
+                fontCheckbox.parentElement.innerHTML += ' <span class="beta-tag">BETA</span>';
+            }
+            
+            if (fontUploadBtn) {
+                fontUploadBtn.innerHTML += ' <span class="beta-tag">BETA</span>';
             }
         }
     };
