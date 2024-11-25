@@ -79,6 +79,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Add this line to bind the font upload button
             document.getElementById('uploadFontsBtn').addEventListener('click', () => this.handleFontUpload());
+
+            // Add folder upload button handler
+            document.getElementById('uploadAnimsFolderBtn').addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.webkitdirectory = true;
+                input.directory = true;
+                input.multiple = true;
+                
+                input.onchange = async (e) => {
+                    const files = Array.from(e.target.files);
+                    
+                    // Filter for image files and sort by name
+                    const imageFiles = files
+                        .filter(file => file.type.startsWith('image/'))
+                        .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+                    
+                    if (imageFiles.length === 0) {
+                        this.updateStatus('No image files found in folder', true);
+                        return;
+                    }
+                    
+                    try {
+                        await this.addAnimation(imageFiles);
+                        this.updateStatus(`Added ${imageFiles.length} frames from folder`);
+                    } catch (error) {
+                        this.updateStatus('Error adding animation: ' + error.message, true);
+                    }
+                };
+                
+                input.click();
+            });
         },
 
         setupTabs() {

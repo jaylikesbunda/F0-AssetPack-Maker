@@ -1118,3 +1118,55 @@ canvas {
     margin-bottom: var(--spacing-md);
     font-weight: bold;
 }
+
+.upload-buttons {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.upload-buttons .button {
+    flex: 1;
+}
+
+.upload-section {
+    margin-bottom: var(--spacing-md);
+}
+
+.upload-section h3 {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.upload-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.upload-buttons .button {
+    width: 100%;
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* Update existing button styles */
+.file-upload .button {
+    width: 100%;
+    margin-bottom: var(--spacing-xs);
+}
+
+/* Add some helper text */
+.upload-buttons {
+    position: relative;
+}
+
+.upload-buttons::after {
+    content: "Choose single files or an entire folder";
+    display: block;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    margin-top: var(--spacing-xs);
+    font-style: italic;
+}
