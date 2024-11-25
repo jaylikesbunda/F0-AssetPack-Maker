@@ -106,8 +106,8 @@ Weight: ${anim.weight || 3}`;
                     // Static icon (.bmx format)
                     const bmxData = await this.convertToBMX(icon.image);
                     
-                    // Use category_default naming scheme for all categories
-                    const iconName = `${category.toLowerCase()}_default`;
+                    // Use category_default naming scheme and append resolution
+                    const iconName = `${category.toLowerCase()}_default_${icon.image.width}x${icon.image.height}`;
                     categoryFolder.file(`${iconName}.bmx`, bmxData);
                 }
             }
