@@ -29,6 +29,8 @@
                             <label for="includeAnims">Animations</label>
                             <input type="checkbox" id="includeIcons" checked>
                             <label for="includeIcons">Icons</label>
+                            <input type="checkbox" id="includeFonts" checked>
+                            <label for="includeFonts">Fonts</label>
                         </div>
                     </div>
                 </div>
@@ -37,6 +39,7 @@
                     <h2>Upload Files</h2>
                     <button class="button" id="uploadAnimsBtn">Upload Animations</button>
                     <button class="button" id="uploadIconsBtn">Upload Icons</button>
+                    <button class="button" id="uploadFontsBtn">Upload Fonts</button>
                     <div id="uploadStatus"></div>
                 </div>
 
@@ -50,6 +53,7 @@
                 <div class="tabs">
                     <button class="tab-btn active" data-tab="animations">Animations</button>
                     <button class="tab-btn" data-tab="icons">Icons</button>
+                    <button class="tab-btn" data-tab="fonts">Fonts</button>
                 </div>
 
                 <div class="tab-content" id="animationsTab">
@@ -68,6 +72,42 @@
                             <span class="emoji">🖼️</span>
                             <p>No icons yet!</p>
                             <p>Click "Upload Icons" to get started</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content hidden" id="fontsTab">
+                    <div class="font-list" id="fontList">
+                        <div class="empty-state">
+                            <span class="emoji">🔤</span>
+                            <h3>No fonts yet!</h3>
+                            <div class="font-instructions">
+                                <h4>Supported Font Formats:</h4>
+                                <ul>
+                                    <li>U8g2 Binary Font (.u8f)</li>
+                                    <li>U8g2 C Source (.c)</li>
+                                    <li>BDF (.bdf) - Coming Soon</li>
+                                    <li>PCF (.pcf) - Coming Soon</li>
+                                    <li>TrueType (.ttf) - Coming Soon</li>
+                                </ul>
+                                
+                                <h4>How to Get U8g2 Fonts:</h4>
+                                <ol>
+                                    <li>Visit the <a href="https://github.com/olikraus/u8g2/tree/master/tools/font/bdf" target="_blank">U8g2 Font Repository</a></li>
+                                    <li>Download a .bdf font file</li>
+                                    <li>Use the <a href="https://github.com/olikraus/u8g2/tree/master/tools/font/bdfconv" target="_blank">bdfconv tool</a> to convert to U8g2 format</li>
+                                    <li>Upload the resulting .c or .u8f file</li>
+                                </ol>
+                                
+                                <div class="quick-links">
+                                    <h4>Quick Links:</h4>
+                                    <ul>
+                                        <li><a href="https://github.com/olikraus/u8g2/wiki/fntgrp" target="_blank">U8g2 Font Reference</a></li>
+                                        <li><a href="https://github.com/olikraus/u8g2/wiki/u8g2fontformat" target="_blank">U8g2 Font Format Spec</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <button class="button" id="uploadFontsBtn">Upload Fonts</button>
                         </div>
                     </div>
                 </div>
@@ -214,9 +254,31 @@
         </div>
     </template>
 
+    <template id="fontItemTemplate">
+        <div class="font-item" data-name="">
+            <div class="font-header">
+                <input type="text" class="font-name" placeholder="Font name">
+                <div class="font-controls">
+                    <select class="font-size">
+                        <option value="Small">Small (5x8)</option>
+                        <option value="Medium">Medium (6x10)</option>
+                        <option value="Large">Large (8x12)</option>
+                    </select>
+                    <button class="button small remove-btn">Remove</button>
+                </div>
+            </div>
+            <div class="preview-container">
+                <div class="font-preview">
+                    <span class="preview-text">The quick brown fox jumps over the lazy dog</span>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="utils.js"></script>
-    <script src="app.js"></script>
+    <script src="utils.js" type="module"></script>
+    <script src="fontProcessor.js" type="module"></script>
+    <script src="app.js" type="module"></script>
 
     <footer class="footer">
         <p>v0.3 made by <a href="https://github.com/jaylikesbunda" target="_blank">jay candel</a> with ❤️</p>

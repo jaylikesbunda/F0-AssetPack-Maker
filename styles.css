@@ -134,7 +134,6 @@ body {
 
 .input-group label {
     display: block;
-    margin-bottom: 0.5rem;
     color: var(--text-secondary);
     font-size: 0.7em;
     line-height: 1.4;
@@ -958,4 +957,77 @@ input:focus {
 
 .empty-state p {
     margin: var(--spacing-xs) 0;
+}
+
+.font-item {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.font-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+}
+
+.font-controls {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.font-preview {
+    background: var(--bg-primary);
+    padding: var(--spacing-md);
+    border-radius: 4px;
+    min-height: 60px;
+}
+
+.preview-text {
+    display: block;
+    word-wrap: break-word;
+    color: var(--text-primary);
+}
+
+/* Add styles for the font instructions */
+.font-instructions {
+    text-align: left;
+    margin: var(--spacing-lg) 0;
+    font-size: var(--font-size-xs);
+    line-height: 1.6;
+}
+
+.font-instructions h4 {
+    color: var(--accent-orange);
+    margin: var(--spacing-md) 0 var(--spacing-xs);
+}
+
+.font-instructions ul,
+.font-instructions ol {
+    padding-left: var(--spacing-md);
+    color: var(--text-secondary);
+}
+
+.font-instructions li {
+    margin: var(--spacing-xs) 0;
+}
+
+.font-instructions a {
+    color: var(--accent-purple);
+    text-decoration: none;
+}
+
+.font-instructions a:hover {
+    color: var(--accent-orange);
+    text-decoration: underline;
+}
+
+.quick-links {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background: var(--bg-secondary);
+    border-radius: 4px;
 }

@@ -1,5 +1,10 @@
+import { Utils } from './utils.js';
+import { FontProcessor } from './fontProcessor.js';
+import { ImageProcessor } from './imageProcessor.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     const app = {
+        fontProcessor: new FontProcessor(),
         imageProcessor: new ImageProcessor(),
         
         init() {
@@ -48,6 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             });
+
+            // Add this line to bind the font upload button
+            document.getElementById('uploadFontsBtn').addEventListener('click', () => this.handleFontUpload());
         },
 
         setupTabs() {
@@ -1011,6 +1019,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.imageProcessor.reorderFrames(name, fromIndex, toIndex);
                 this.updateFrameList(e.target.closest('.animation-item'), name);
                 updateCallback();
+            }
+        },
+
+        async handleFontUpload() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.c,.u8f';
+            
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    await this.addFont(file);
+                }
+            };
+            
+            input.click();
+        },
+
+        async addFont(file) {
+            try {
+                const name = this.generateUniqueName(file.name, 'Fonts');
+                const previewUrl = await this.fontProcessor.addFont(name, file);
+                const container = await this.addFontToUI(name, previewUrl);
+                document.getElementById('fontList').appendChild(container);
+                this.updateStatus('Added font successfully');
+            } catch (error) {
+                this.updateStatus('Error adding font: ' + error.message, true);
             }
         }
     };
