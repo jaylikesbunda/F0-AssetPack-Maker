@@ -106,7 +106,13 @@ Weight: ${anim.weight || 3}`;
                     // Static icon (.bmx format)
                     const bmxData = await this.convertToBMX(icon.image);
                     
-                    // Use category_default naming scheme and append resolution
+                    // Verify BMX before adding to zip
+                    const verification = this.verifyBMXFormat(bmxData);
+                    if (!verification.valid) {
+                        console.error(`Invalid BMX for ${name}: ${verification.error}`);
+                        continue;
+                    }
+                    
                     const iconName = `${category.toLowerCase()}_default_${icon.image.width}x${icon.image.height}`;
                     categoryFolder.file(`${iconName}.bmx`, bmxData);
                 }
@@ -288,84 +294,237 @@ Weight: ${anim.weight || 3}`;
     }
 
     static async convertToXBM(image) {
-        // First ensure we have a valid image to work with
-        let imgElement;
-        if (image instanceof Blob) {
-            imgElement = await createImageBitmap(image);
-        } else if (image instanceof ImageBitmap) {
-            imgElement = image;
-        } else if (image.blob) {
-            imgElement = await createImageBitmap(image.blob);
-        } else if (image.originalBlob) {
-            imgElement = await createImageBitmap(image.originalBlob);
-        } else {
-            throw new Error('Invalid image format provided');
-        }
-
+        // First get image data like before
+        const imgElement = await this.getImageElement(image);
+        const width = imgElement.width;
+        const height = imgElement.height;
+        
+        // Calculate buffer size correctly
+        const bufferSize = Math.ceil((width * height) / 8);
+        const buffer = new Uint8Array(bufferSize);
+        
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = imgElement.width;
-        canvas.height = imgElement.height;
+        canvas.width = width;
+        canvas.height = height;
         
         // Draw and get image data
         ctx.drawImage(imgElement, 0, 0);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
-        // Calculate buffer size and create buffer
-        const width = imgElement.width;
-        const height = imgElement.height;
-        const rowSize = Math.ceil(width / 8);
-        const bufferSize = rowSize * height;
-        const buffer = new Uint8Array(bufferSize);
-        
-        // Convert to 1-bit monochrome (matching Python's ImageOps.invert())
+        // Process pixels using single-dimensional approach
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                const i = (y * width + x) * 4;
-                const brightness = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+                const pixelIndex = (y * width + x);
+                const i = pixelIndex * 4;
                 
-                if (brightness > 127) {  // Inverted like Python implementation
-                    const byteIndex = y * rowSize + Math.floor(x / 8);
-                    const bitIndex = 7 - (x % 8);  // MSB first, like XBM format
+                // Use PIL's grayscale formula
+                const gray = (imageData.data[i] * 299 + 
+                            imageData.data[i + 1] * 587 + 
+                            imageData.data[i + 2] * 114) / 1000;
+                
+                // Invert and set bits
+                if (gray < 128) {
+                    const byteIndex = Math.floor(pixelIndex / 8);
+                    const bitIndex = pixelIndex % 8;
                     buffer[byteIndex] |= (1 << bitIndex);
                 }
             }
         }
-        
+
         // Clean up
         if (imgElement instanceof ImageBitmap) {
             imgElement.close();
         }
-        
-        // Return uncompressed format (0x00 + data)
-        // This matches Python's raw format
-        return new Uint8Array([0x00, ...buffer]);
+
+        return buffer;
+    }
+
+    static verifyBMXFormat(buffer) {
+        try {
+            if (!(buffer instanceof Uint8Array)) {
+                throw new Error('Invalid buffer type');
+            }
+
+            // Check minimum size (8 bytes header + 1 byte compression flag + at least 1 byte data)
+            if (buffer.length < 10) {
+                throw new Error('BMX file too small');
+            }
+
+            // Verify header structure
+            const view = new DataView(buffer.buffer);
+            const width = view.getInt32(0, true);   // Little endian
+            const height = view.getInt32(4, true);  // Little endian
+
+            // Validate dimensions (Flipper Zero constraints)
+            if (width <= 0 || width > 128 || height <= 0 || height > 64) {
+                throw new Error(`Invalid dimensions: ${width}x${height}`);
+            }
+
+            // Verify compression flag (0x00 for uncompressed, 0x01 for compressed)
+            const compressionFlag = buffer[8];
+            if (compressionFlag !== 0x00 && compressionFlag !== 0x01) {
+                throw new Error(`Invalid compression flag: ${compressionFlag}`);
+            }
+
+            // Calculate expected data size
+            const expectedDataSize = Math.ceil(width * height / 8);
+            const actualDataSize = buffer.length - 9;  // Subtract header and flag
+
+            // For uncompressed data
+            if (compressionFlag === 0x00 && actualDataSize !== expectedDataSize) {
+                throw new Error(`Invalid data size for uncompressed BMX: ${actualDataSize} vs expected ${expectedDataSize}`);
+            }
+
+            return {
+                valid: true,
+                width,
+                height,
+                compressed: compressionFlag === 0x01,
+                dataSize: actualDataSize
+            };
+        } catch (error) {
+            return {
+                valid: false,
+                error: error.message
+            };
+        }
     }
 
     static async convertToBMX(image) {
-        // First ensure we have valid dimensions
-        const width = image.width || image.image?.width;
-        const height = image.height || image.image?.height;
-        
-        if (!width || !height) {
-            throw new Error('Invalid image dimensions');
-        }
+        try {
+            // Get dimensions from the actual image data
+            const imgElement = await this.getImageElement(image);
+            const width = imgElement.width;
+            const height = imgElement.height;
 
-        // Create header with dimensions (little-endian, matching Python struct.pack)
-        const header = new ArrayBuffer(8);
-        const view = new DataView(header);
-        view.setInt32(0, width, true);   // Little endian
-        view.setInt32(4, height, true);  // Little endian
-        
-        // Get bitmap data
-        const bitmapData = await this.convertToXBM(image);
-        
-        // Combine header and bitmap data (matching Python's format)
-        const result = new Uint8Array(header.byteLength + bitmapData.byteLength);
-        result.set(new Uint8Array(header), 0);
-        result.set(bitmapData, header.byteLength);
-        
-        return result;
+            console.log('Converting to BMX:', { width, height });  // Debug log
+
+            // Convert to XBM using same dimensions
+            const xbmData = await this.convertToXBM({ width, height, image: imgElement });
+            
+            // Use consistent size calculation
+            const dataSize = Math.ceil((width * height) / 8);  // Match XBM calculation
+            
+            // Verify XBM data size
+            if (xbmData.length !== dataSize) {
+                console.error('Size mismatch:', {
+                    xbmLength: xbmData.length,
+                    calculatedSize: dataSize,
+                    dimensions: `${width}x${height}`,
+                    calculation: `ceil((${width} * ${height}) / 8) = ${dataSize}`
+                });
+                throw new Error(`XBM data size mismatch: ${xbmData.length} vs expected ${dataSize}`);
+            }
+            
+            // Create BMX with verified sizes
+            const headerSize = 8;
+            const flagSize = 1;
+            const result = new Uint8Array(headerSize + flagSize + dataSize);
+            
+            // Write header
+            const view = new DataView(result.buffer);
+            view.setInt32(0, width, true);
+            view.setInt32(4, height, true);
+            result[8] = 0x00;  // Uncompressed
+            result.set(xbmData, 9);
+            
+            // Verify final BMX
+            const verification = this.verifyBMXFormat(result);
+            if (!verification.valid) {
+                throw new Error(`Invalid BMX generated: ${verification.error}`);
+            }
+            
+            return result;
+        } catch (error) {
+            console.error('BMX conversion error:', error);
+            throw error;
+        }
+    }
+
+    static async processImageToBitmap(image) {
+        try {
+            // Create canvas with proper dimensions
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            if (!ctx) {
+                throw new Error('Failed to get canvas context');
+            }
+
+            // Get proper image data
+            let imgElement;
+            try {
+                imgElement = await this.getImageElement(image);
+                canvas.width = imgElement.width;
+                canvas.height = imgElement.height;
+            } catch (e) {
+                throw new Error(`Failed to process image: ${e.message}`);
+            }
+
+            // Configure canvas for pixel-perfect rendering
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(imgElement, 0, 0);
+
+            // Process image data with error handling
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const { width, height } = imageData;
+            
+            // Calculate proper buffer size
+            const rowSize = Math.ceil(width / 8);
+            const bufferSize = rowSize * height;
+            const buffer = new Uint8Array(bufferSize);
+
+            // Enhanced pixel processing with bounds checking
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const i = (y * width + x) * 4;
+                    
+                    if (i + 2 >= imageData.data.length) {
+                        throw new Error('Image data buffer overflow');
+                    }
+
+                    // Improved brightness calculation with gamma correction
+                    const r = imageData.data[i] / 255;
+                    const g = imageData.data[i + 1] / 255;
+                    const b = imageData.data[i + 2] / 255;
+                    
+                    // sRGB to linear conversion for better monochrome results
+                    const brightness = Math.pow(0.2126 * r + 0.7152 * g + 0.0722 * b, 1/2.2);
+                    
+                    if (brightness > 0.5) {  // Threshold with proper gamma
+                        const byteIndex = y * rowSize + Math.floor(x / 8);
+                        const bitIndex = 7 - (x % 8);  // MSB first
+                        buffer[byteIndex] |= (1 << bitIndex);
+                    }
+                }
+            }
+
+            // Clean up
+            if (imgElement instanceof ImageBitmap) {
+                imgElement.close();
+            }
+
+            return new Uint8Array([0x00, ...buffer]);
+        } catch (error) {
+            console.error('Bitmap processing error:', error);
+            throw error;
+        }
+    }
+
+    static async getImageElement(image) {
+        if (image instanceof ImageBitmap) {
+            return image;
+        } else if (image instanceof Blob) {
+            return await createImageBitmap(image);
+        } else if (image.blob) {
+            return await createImageBitmap(image.blob);
+        } else if (image.originalBlob) {
+            return await createImageBitmap(image.originalBlob);
+        } else if (image.image instanceof ImageBitmap) {
+            return image.image;
+        }
+        throw new Error('Invalid image format');
     }
 
     static async createAnimatedIconMeta(width, height, frameRate, frameCount) {
