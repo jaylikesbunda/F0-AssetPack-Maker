@@ -64,32 +64,30 @@ export class Utils {
             const animsFolder = packFolder.folder('Anims');
             
             // Create manifest.txt first
-            let manifest = '';
+            let manifest = 'Filetype: Flipper Animation Manifest\nVersion: 1\n\n';
             for (const [name, anim] of assets.animations) {
                 manifest += `Name: ${name}\n`;
+                manifest += `Min butthurt: 0\n`;
+                manifest += `Max butthurt: 14\n`;
+                manifest += `Min level: ${anim.minLevel || 1}\n`;
+                manifest += `Max level: ${anim.maxLevel || 30}\n`;
+                manifest += `Weight: ${anim.weight || 3}\n\n`;
             }
-            animsFolder.file('manifest.txt', manifest);
+            animsFolder.file('manifest.txt', manifest.trimEnd());
             
             // Process each animation
             for (const [name, anim] of assets.animations) {
                 const animFolder = animsFolder.folder(name);
                 
                 // Create meta.txt with EXACT format matching Python
-                const meta = `Width: ${anim.frames[0].width}
-Height: ${anim.frames[0].height}
-Frames: ${anim.frames.length}
-Duration: ${anim.frameRate || 30}
-Min butthurt: 0
-Max butthurt: 14
-Min level: ${anim.minLevel || 1}
-Max level: ${anim.maxLevel || 30}
-Weight: ${anim.weight || 3}`;
+                const framesOrder = Array.from({length: anim.frames.length}, (_, i) => i).join(' ');
+                const meta = `Filetype: Flipper Animation\nVersion: 1\n\nWidth: ${anim.frames[0].width}\nHeight: ${anim.frames[0].height}\nPassive frames: ${anim.frames.length}\nActive frames: 0\nFrames order: ${framesOrder}\nActive cycles: 0\nFrame rate: ${anim.frameRate || 5}\nDuration: ${anim.frameRate || 5}\nMin butthurt: 0\nMax butthurt: 14\nMin level: ${anim.minLevel || 1}\nMax level: ${anim.maxLevel || 30}\nWeight: ${anim.weight || 3}`;
                 animFolder.file('meta.txt', meta.replace(/\r\n/g, '\n'));  // Ensure LF line endings
                 
                 // Add frames with correct naming
                 for (let i = 0; i < anim.frames.length; i++) {
-                    const frameData = await this.convertToXBM(anim.frames[i]);
-                    animFolder.file(`frame_${i.toString().padStart(2, '0')}.bm`, frameData);
+                    const frameData = await this.convertToBM(anim.frames[i]);
+                    animFolder.file(`frame_${i}.bm`, frameData);
                 }
             }
         }
@@ -294,45 +292,45 @@ Weight: ${anim.weight || 3}`;
     }
 
     static async convertToXBM(image) {
-        // First get image data like before
+        // Obtain image element (Bitmap/blob/etc.)
         const imgElement = await this.getImageElement(image);
         const width = imgElement.width;
         const height = imgElement.height;
-        
-        // Calculate buffer size correctly
-        const bufferSize = Math.ceil((width * height) / 8);
+
+        // Row-aligned buffer size (Flipper expects each row padded to full bytes)
+        const rowSize = Math.ceil(width / 8);
+        const bufferSize = rowSize * height;
         const buffer = new Uint8Array(bufferSize);
-        
+
+        // Draw image to canvas
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
         canvas.width = width;
         canvas.height = height;
-        
-        // Draw and get image data
+        const ctx = canvas.getContext('2d');
         ctx.drawImage(imgElement, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Process pixels using single-dimensional approach
+        const imageData = ctx.getImageData(0, 0, width, height);
+
+        // Iterate per pixel – pack bits LSB first within each byte like XBM
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                const pixelIndex = (y * width + x);
-                const i = pixelIndex * 4;
-                
-                // Use PIL's grayscale formula
-                const gray = (imageData.data[i] * 299 + 
-                            imageData.data[i + 1] * 587 + 
-                            imageData.data[i + 2] * 114) / 1000;
-                
-                // Invert and set bits
+                const i = (y * width + x) * 4;
+
+                // if pixel is fully transparent treat as white so it stays cleared in bitmap
+                const alpha = imageData.data[i + 3];
+                if (alpha < 128) continue;
+
+                // Basic luminance (same coefficients PIL uses internally)
+                const gray = (imageData.data[i] * 299 + imageData.data[i + 1] * 587 + imageData.data[i + 2] * 114) / 1000;
+
+                // python script inverts after thresholding, so bit is set for DARK pixels (gray < 128)
                 if (gray < 128) {
-                    const byteIndex = Math.floor(pixelIndex / 8);
-                    const bitIndex = pixelIndex % 8;
+                    const byteIndex = y * rowSize + Math.floor(x / 8);
+                    const bitIndex = x % 8; // LSB – leftmost pixel is bit 0
                     buffer[byteIndex] |= (1 << bitIndex);
                 }
             }
         }
 
-        // Clean up
         if (imgElement instanceof ImageBitmap) {
             imgElement.close();
         }
@@ -342,99 +340,61 @@ Weight: ${anim.weight || 3}`;
 
     static verifyBMXFormat(buffer) {
         try {
-            if (!(buffer instanceof Uint8Array)) {
-                throw new Error('Invalid buffer type');
-            }
+            if (!(buffer instanceof Uint8Array)) throw new Error('Invalid buffer type');
 
-            // Check minimum size (8 bytes header + 1 byte compression flag + at least 1 byte data)
-            if (buffer.length < 10) {
-                throw new Error('BMX file too small');
-            }
+            if (buffer.length < 10) throw new Error('BMX file too small');
 
-            // Verify header structure
             const view = new DataView(buffer.buffer);
-            const width = view.getInt32(0, true);   // Little endian
-            const height = view.getInt32(4, true);  // Little endian
+            const width = view.getInt32(0, true);
+            const height = view.getInt32(4, true);
 
-            // Validate dimensions (Flipper Zero constraints)
-            if (width <= 0 || width > 128 || height <= 0 || height > 64) {
+            if (width <= 0 || width > 128 || height <= 0 || height > 64)
                 throw new Error(`Invalid dimensions: ${width}x${height}`);
-            }
 
-            // Verify compression flag (0x00 for uncompressed, 0x01 for compressed)
             const compressionFlag = buffer[8];
-            if (compressionFlag !== 0x00 && compressionFlag !== 0x01) {
+            if (compressionFlag !== 0x00 && compressionFlag !== 0x01)
                 throw new Error(`Invalid compression flag: ${compressionFlag}`);
-            }
 
-            // Calculate expected data size
-            const expectedDataSize = Math.ceil(width * height / 8);
-            const actualDataSize = buffer.length - 9;  // Subtract header and flag
+            const rowSize = Math.ceil(width / 8);
+            const expectedDataSize = rowSize * height;
+            const actualDataSize = buffer.length - 9;
 
-            // For uncompressed data
-            if (compressionFlag === 0x00 && actualDataSize !== expectedDataSize) {
+            if (compressionFlag === 0x00 && actualDataSize !== expectedDataSize)
                 throw new Error(`Invalid data size for uncompressed BMX: ${actualDataSize} vs expected ${expectedDataSize}`);
-            }
 
-            return {
-                valid: true,
-                width,
-                height,
-                compressed: compressionFlag === 0x01,
-                dataSize: actualDataSize
-            };
+            return { valid: true, width, height, compressed: compressionFlag === 0x01, dataSize: actualDataSize };
         } catch (error) {
-            return {
-                valid: false,
-                error: error.message
-            };
+            return { valid: false, error: error.message };
         }
     }
 
     static async convertToBMX(image) {
         try {
-            // Get dimensions from the actual image data
             const imgElement = await this.getImageElement(image);
             const width = imgElement.width;
             const height = imgElement.height;
 
-            console.log('Converting to BMX:', { width, height });  // Debug log
+            const rowSize = Math.ceil(width / 8);
+            const dataSize = rowSize * height;
 
-            // Convert to XBM using same dimensions
-            const xbmData = await this.convertToXBM({ width, height, image: imgElement });
-            
-            // Use consistent size calculation
-            const dataSize = Math.ceil((width * height) / 8);  // Match XBM calculation
-            
-            // Verify XBM data size
+            const xbmData = await this.convertToXBM(imgElement);
+
             if (xbmData.length !== dataSize) {
-                console.error('Size mismatch:', {
-                    xbmLength: xbmData.length,
-                    calculatedSize: dataSize,
-                    dimensions: `${width}x${height}`,
-                    calculation: `ceil((${width} * ${height}) / 8) = ${dataSize}`
-                });
-                throw new Error(`XBM data size mismatch: ${xbmData.length} vs expected ${dataSize}`);
+                throw new Error(`XBM size ${xbmData.length} does not match expected ${dataSize}`);
             }
-            
-            // Create BMX with verified sizes
+
             const headerSize = 8;
             const flagSize = 1;
             const result = new Uint8Array(headerSize + flagSize + dataSize);
-            
-            // Write header
             const view = new DataView(result.buffer);
             view.setInt32(0, width, true);
             view.setInt32(4, height, true);
-            result[8] = 0x00;  // Uncompressed
+            result[8] = 0x00; // uncompressed flag
             result.set(xbmData, 9);
-            
-            // Verify final BMX
+
             const verification = this.verifyBMXFormat(result);
-            if (!verification.valid) {
-                throw new Error(`Invalid BMX generated: ${verification.error}`);
-            }
-            
+            if (!verification.valid) throw new Error(`Invalid BMX generated: ${verification.error}`);
+
             return result;
         } catch (error) {
             console.error('BMX conversion error:', error);
@@ -483,6 +443,10 @@ Weight: ${anim.weight || 3}`;
                     if (i + 2 >= imageData.data.length) {
                         throw new Error('Image data buffer overflow');
                     }
+
+                    // if pixel is fully transparent treat as white so it stays cleared in bitmap
+                    const alpha = imageData.data[i + 3];
+                    if (alpha < 128) continue;
 
                     // Improved brightness calculation with gamma correction
                     const r = imageData.data[i] / 255;
@@ -585,5 +549,14 @@ Weight: ${anim.weight || 3}`;
             default:
                 return cleanName;
         }
+    }
+
+    static async convertToBM(image) {
+        // generate uncompressed BM: 0x00 header + raw bitmap
+        const raw = await this.convertToXBM(image);
+        const result = new Uint8Array(raw.length + 1);
+        result[0] = 0x00;
+        result.set(raw, 1);
+        return result;
     }
 }
